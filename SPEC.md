@@ -40,7 +40,7 @@ Designing against a single platform lets the spec assume Capacitor APIs, the And
 
 | Concern              | Choice                                                                                     |
 | -------------------- | ------------------------------------------------------------------------------------------ |
-| Framework            | React 18 + Vite 5 + TypeScript 5                                                           |
+| Framework            | React 19 + Vite 8 + TypeScript 6 (versions tracked in `package.json`)                      |
 | Styling              | Tailwind CSS v3 with a custom HSL semantic token system in `src/index.css`                 |
 | Component primitives | Hand-rolled. No shadcn/ui. The only third-party UI dep is `sonner` for toasts.             |
 | Drag & drop          | `@dnd-kit/core` + `@dnd-kit/sortable` (pointer + touch sensors)                            |

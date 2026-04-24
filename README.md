@@ -33,16 +33,16 @@ First-time setup: `npx cap add android` after `npm install`. You'll need Android
 | `npm run dev`       | Vite dev server with HMR                   |
 | `npm run build`     | Production build to `dist/`                |
 | `npm run preview`   | Serve the production build locally         |
-| `npm run lint`      | Lint with the project's ESLint config      |
 | `npm run typecheck` | TypeScript type-check without emitting     |
 | `npm run test`      | Vitest unit + component tests              |
-| `npm run test:e2e`  | Playwright gesture suite (Android emulation) |
+
+ESLint and Playwright (`npm run lint`, `npm run test:e2e`) come in later slices.
 
 ---
 
 ## Tech stack at a glance
 
-- **React 18 + Vite 5 + TypeScript 5**
+- **React 19 + Vite 8 + TypeScript 6** (current pins; see `package.json`)
 - **Tailwind CSS v3** with a custom HSL semantic token system
 - **Capacitor 6** for the Android APK shell (haptics, clipboard, back button, status bar)
 - **@dnd-kit** for drag-and-drop in edit mode
