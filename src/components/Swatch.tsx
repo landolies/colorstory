@@ -5,25 +5,70 @@ interface SwatchProps {
   block: ColorBlock;
   index: number;
   total: number;
+  startPct: number;
+  endPct: number;
   onTap: (id: string) => void;
 }
 
-function clipPathFor(index: number, total: number): string | undefined {
-  if (total === 1) return undefined;
-  if (index === 0) {
-    return 'polygon(0 0, 100% 0, calc(100% - var(--seam-x)) 100%, 0 100%)';
-  }
-  if (index === total - 1) {
-    return 'polygon(0 0, 100% 0, 100% 100%, calc(0px - var(--seam-x)) 100%)';
-  }
-  return 'polygon(0 0, 100% 0, calc(100% - var(--seam-x)) 100%, calc(0px - var(--seam-x)) 100%)';
+interface Layout {
+  left: string;
+  width: string;
+  clipPath: string | undefined;
 }
 
-export function Swatch({ block, index, total, onTap }: SwatchProps) {
+function layoutFor(
+  index: number,
+  total: number,
+  startPct: number,
+  endPct: number,
+): Layout {
+  const isFirst = index === 0;
+  const isLast = index === total - 1;
+  const isSingle = total === 1;
+
+  if (isSingle) {
+    return { left: '0', width: '100%', clipPath: undefined };
+  }
+  if (isFirst) {
+    return {
+      left: '0',
+      width: `${endPct}%`,
+      clipPath:
+        'polygon(0 0, 100% 0, calc(100% - var(--seam-x)) 100%, 0 100%)',
+    };
+  }
+  if (isLast) {
+    return {
+      left: `calc(${startPct}% - var(--seam-x))`,
+      width: `calc(${100 - startPct}% + var(--seam-x))`,
+      clipPath: 'polygon(var(--seam-x) 0, 100% 0, 100% 100%, 0 100%)',
+    };
+  }
+  return {
+    left: `calc(${startPct}% - var(--seam-x))`,
+    width: `calc(${endPct - startPct}% + var(--seam-x))`,
+    clipPath:
+      'polygon(var(--seam-x) 0, 100% 0, calc(100% - var(--seam-x)) 100%, 0 100%)',
+  };
+}
+
+export function Swatch({
+  block,
+  index,
+  total,
+  startPct,
+  endPct,
+  onTap,
+}: SwatchProps) {
+  const layout = layoutFor(index, total, startPct, endPct);
   const style: CSSProperties = {
-    flex: block.weight === 'major' ? 3 : 1,
+    position: 'absolute',
+    top: 0,
+    height: '100%',
+    left: layout.left,
+    width: layout.width,
     backgroundColor: block.hex,
-    clipPath: clipPathFor(index, total),
+    clipPath: layout.clipPath,
   };
   return (
     <div
@@ -31,7 +76,7 @@ export function Swatch({ block, index, total, onTap }: SwatchProps) {
       aria-label={`Color ${block.hex}`}
       onPointerUp={() => onTap(block.id)}
       style={style}
-      className="h-full select-none [touch-action:manipulation]"
+      className="select-none [touch-action:manipulation]"
     />
   );
 }

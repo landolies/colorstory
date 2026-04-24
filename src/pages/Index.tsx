@@ -10,6 +10,7 @@ import { Plus, Shuffle } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ColorBlock, Weight } from '../lib/types';
 import { randomPleasantColor } from '../lib/color';
+import { newId } from '../lib/id';
 import { Tile } from '../components/Tile';
 import { ActionRow } from '../components/ActionRow';
 
@@ -27,10 +28,6 @@ type PendingAction =
   | { type: 'add'; weight: Weight }
   | { type: 'recolor'; id: string }
   | null;
-
-function newId(): string {
-  return crypto.randomUUID();
-}
 
 export function Index() {
   const [blocks, setBlocks] = useState<ColorBlock[]>([]);
