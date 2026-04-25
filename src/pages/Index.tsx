@@ -10,16 +10,22 @@ import { Check, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { arrayMove } from '@dnd-kit/sortable';
-import type { Weight } from '../lib/types';
+import type { ColorBlock, SavedStory, Weight } from '../lib/types';
 import { randomPleasantColor } from '../lib/color';
 import { newId } from '../lib/id';
+import { clipboard } from '../lib/platform';
 import { Tile } from '../components/Tile';
 import { ActionRow } from '../components/ActionRow';
+import { NamingOverlay } from '../components/NamingOverlay';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { SavedStories } from '../components/SavedStories';
 import {
   editorReducer,
   initialEditorState,
   MAX_COLORS,
+  MIN_COLORS_TO_SAVE,
 } from '../state/editor';
+import { useArchive } from '../state/archive';
 
 const TILE_SHADOW = 'drop-shadow(0 2px 6px hsl(0 0% 0% / 0.3))';
 
@@ -50,12 +56,41 @@ function adjacentDuplicate(
   return Boolean((prev && prev.hex === hex) || (next && next.hex === hex));
 }
 
+function defaultStoryName(savedCount: number): string {
+  return `Study №${String(savedCount + 1).padStart(3, '0')}`;
+}
+
+function nameInUse(
+  stories: SavedStory[],
+  name: string,
+  excludeId?: string,
+): boolean {
+  const lower = name.toLowerCase();
+  return stories.some(
+    (s) => s.name.toLowerCase() === lower && s.id !== excludeId,
+  );
+}
+
+function cloneColors(colors: ColorBlock[]): ColorBlock[] {
+  return colors.map((c) => ({ ...c, id: newId() }));
+}
+
 export function Index() {
   const [state, dispatch] = useReducer(editorReducer, initialEditorState);
   const [pending, setPending] = useState<PendingAction>(null);
+  const [namingOpen, setNamingOpen] = useState(false);
+  const [editingStoryId, setEditingStoryId] = useState<string | null>(null);
+  const [editingStoryName, setEditingStoryName] = useState<string | null>(
+    null,
+  );
+  const [confirmDelete, setConfirmDelete] = useState<SavedStory | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const { stories, addStory, updateStory, removeStory } = useArchive(() =>
+    toast("Couldn't save"),
+  );
   const { mode, blocks } = state;
   const isAtMax = blocks.length >= MAX_COLORS;
+  const canSave = blocks.length >= MIN_COLORS_TO_SAVE;
 
   const openPicker = useCallback((action: Exclude<PendingAction, null>) => {
     setPending(action);
@@ -164,14 +199,96 @@ export function Index() {
     [blocks],
   );
 
-  const discard = useCallback(() => dispatch({ type: 'discardAll' }), []);
+  const discard = useCallback(() => {
+    dispatch({ type: 'discardAll' });
+    setEditingStoryId(null);
+    setEditingStoryName(null);
+  }, []);
+
+  const openNaming = useCallback(() => {
+    if (!canSave) return;
+    setNamingOpen(true);
+  }, [canSave]);
+
+  const cancelNaming = useCallback(() => setNamingOpen(false), []);
+
+  const confirmNaming = useCallback(
+    (name: string) => {
+      const trimmed = name.trim();
+      if (
+        nameInUse(stories, trimmed, editingStoryId ?? undefined)
+      ) {
+        toast('Name already in use');
+        return;
+      }
+      if (editingStoryId) {
+        updateStory(editingStoryId, {
+          name: trimmed,
+          colors: blocks,
+          updatedAt: new Date().toISOString(),
+        });
+      } else {
+        const story: SavedStory = {
+          id: newId(),
+          schemaVersion: 2,
+          name: trimmed,
+          colors: blocks,
+          createdAt: new Date().toISOString(),
+        };
+        addStory(story);
+      }
+      dispatch({ type: 'discardAll' });
+      setEditingStoryId(null);
+      setEditingStoryName(null);
+      setNamingOpen(false);
+      toast('Saved');
+    },
+    [blocks, addStory, updateStory, stories, editingStoryId],
+  );
+
+  const copyStory = useCallback(async (story: SavedStory) => {
+    const text = story.colors.map((c) => c.hex).join(', ');
+    const result = await clipboard.write(text);
+    if (result.ok) toast('Palette copied');
+  }, []);
+
+  const editStory = useCallback((story: SavedStory) => {
+    dispatch({
+      type: 'loadBlocks',
+      blocks: cloneColors(story.colors),
+    });
+    setEditingStoryId(story.id);
+    setEditingStoryName(story.name);
+  }, []);
+
+  const askDeleteStory = useCallback((story: SavedStory) => {
+    setConfirmDelete(story);
+  }, []);
+
+  const cancelDelete = useCallback(() => setConfirmDelete(null), []);
+
+  const performDelete = useCallback(() => {
+    if (!confirmDelete) return;
+    const id = confirmDelete.id;
+    removeStory(id);
+    setConfirmDelete(null);
+    if (editingStoryId === id) {
+      dispatch({ type: 'discardAll' });
+      setEditingStoryId(null);
+      setEditingStoryName(null);
+    }
+  }, [confirmDelete, removeStory, editingStoryId]);
 
   const isEmpty = blocks.length === 0;
   const isEdit = mode === 'edit';
   const tileTap = isEdit ? toggleWeight : recolor;
 
+  const headerName =
+    editingStoryName ?? defaultStoryName(stories.length);
+  const namingDefault = headerName;
+
   return (
-    <main className="mx-auto w-full max-w-screen-sm px-4 pt-6">
+    <main className="mx-auto w-full max-w-screen-sm px-4 pt-6 pb-12">
       <input
         ref={inputRef}
         type="color"
@@ -180,6 +297,9 @@ export function Index() {
         tabIndex={-1}
         onChange={handlePicked}
       />
+      <h1 className="mb-3 truncate font-serif text-2xl text-ink/80">
+        {headerName}
+      </h1>
       {isEmpty ? (
         <EmptyCanvas onTap={addColor} />
       ) : (
@@ -197,10 +317,10 @@ export function Index() {
           onAdd={isEmpty ? undefined : addColor}
           onShuffle={shuffleColor}
           onDiscard={isEmpty ? undefined : discard}
-          onSave={isEmpty ? undefined : () => {}}
+          onSave={isEmpty ? undefined : openNaming}
           canAdd={!isAtMax}
           canShuffle={!isAtMax}
-          canSave={false}
+          canSave={canSave}
         />
       )}
       {isEdit && (
@@ -214,6 +334,26 @@ export function Index() {
             <Check className="h-5 w-5" />
           </button>
         </div>
+      )}
+      <SavedStories
+        stories={stories}
+        onTap={copyStory}
+        onEdit={editStory}
+        onDelete={askDeleteStory}
+      />
+      {namingOpen && (
+        <NamingOverlay
+          defaultName={namingDefault}
+          onCancel={cancelNaming}
+          onConfirm={confirmNaming}
+        />
+      )}
+      {confirmDelete && (
+        <ConfirmDialog
+          message={`Delete "${confirmDelete.name}"?`}
+          onConfirm={performDelete}
+          onCancel={cancelDelete}
+        />
       )}
     </main>
   );

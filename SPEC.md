@@ -72,7 +72,7 @@ Exports (v0): `haptics.tap()`, `haptics.pulse()`, `clipboard.write(text)`. Picke
 Components must use these semantic tokens — no raw color literals (`#xxxxxx`, `rgb(...)`) anywhere in component code. The one exception is user-supplied swatch colors themselves, which are applied as inline styles.
 
 - `--ink` — deep foreground text
-- `--paper` — neutral **18% grey** background (mid-grey reference; saturated colors read more vividly against it than against off-white)
+- `--paper` — neutral light grey background (~71% lightness; raised from the original 18% mid-grey reference because the darker tone read as too heavy under the colored tile)
 - `--paper-elevated` — bright near-white grey (~90% lightness) for the empty-state canvas and for the pill buttons. Distinct enough from `--paper` that the canvas visibly lifts off the background.
 - `--rule` — hairline borders and seams (darker than `--paper` for visibility)
 
@@ -138,6 +138,8 @@ Only one affordance: a single **eye icon** in the top-right. Tapping it toggles 
 
 Occupies the upper portion of the viewport at the 3:2 aspect ratio defined in §3.
 
+**Story name header.** A single Fraunces-serif heading sits above the canvas. For a fresh draft it shows the auto-generated default (`Study №NNN`, see §6.4); for a story that's been long-press-loaded into the editor for revision, it shows that story's current name. The heading is read-only — the name is editable only via the naming overlay (§4.5) when the user saves.
+
 The canvas itself contains **no overlay controls**. All interaction buttons live in the action row below the canvas (§4.3). The canvas is for color content; the row is for actions. This separation avoids overlay/× collisions and keeps the colored area clean.
 
 **Empty state**
@@ -189,20 +191,23 @@ A single centered **`✓`** button that exits to view mode. The four-button row 
 
 Only renders if the user has at least one saved story.
 
-- Responsive grid below the canvas: **1 column** on narrow viewports, **2** on medium, **3** on wide.
-- Each entry is a miniature version of the same mitered tile (same slant logic, same weights).
-- Below each tile: user-given name (Fraunces), color count, creation date.
-- **Tap a tile** → copies that story's hex codes (comma-separated) to the clipboard (§6.7). Toast: "Palette copied".
-- Small **trash icon** on each entry deletes it (no confirmation in v0).
+- Responsive grid below the canvas. With **1 saved story**, single-column wide layout (looks orphaned at 2-col). With **2+ saved stories**, mobile uses `grid-cols-2 gap-3` for compact browsing; sm+ stays at 2 cols, lg uses 3 cols.
+- **Order:** sorted by `updatedAt ?? createdAt` descending — most recently created or edited story is at the top, oldest at the bottom. Editing an old story re-sorts it to the top.
+- Each entry is a miniature version of the same slanted-seam tile (same slant logic, same weights, same per-corner border-radius).
+- Below each tile: user-given name (Fraunces), color count, displayed date (the most recent of `createdAt` / `updatedAt`).
+- **Tap a tile or its metadata** → copies that story's hex codes (comma-separated) to the clipboard (§6.7). Toast: "Palette copied".
+- **Long-press a tile or its metadata** (~450ms with haptic pulse) → reloads the story's colors into the editor for revision. Tracks the editing-story-id and original name; saving updates the existing story in place (same id, same `createdAt`, new `name` / `colors`, sets `updatedAt` to now). Re-sorting puts the edited story at the top of the archive.
+- **Small trash icon** on each entry: tapping it opens a confirmation dialog (`Delete "{name}"?`); confirm to delete, cancel/Escape/backdrop-tap to abort.
 
 ### 4.5 Naming overlay
 
 Bottom-sheet-style modal (centered as a card on wider screens). Hand-rolled; no shadcn `Dialog`.
 
-- Single serif text input, pre-filled with `Study №NNN` (where `NNN` is a sequence, padded to 3 digits — see §6.4).
-- `×` cancel, `✓` confirm.
-- **Enter** confirms. **Escape** cancels (browser only — Android back button handled via Capacitor `App.addListener('backButton', ...)` to dismiss without exiting the app).
-- On confirm: the story is persisted, the editor clears, the archive updates, a "Saved" toast appears.
+- Single serif text input, pre-filled with `Study №NNN` for a new story (where `NNN` is a sequence, padded to 3 digits — see §6.4) or with the existing story's name when reached via the long-press-edit flow.
+- `×` cancel, `✓` confirm. Confirm is disabled when the trimmed name is empty.
+- **Enter** confirms. **Escape** cancels. Tapping the dark backdrop also cancels.
+- **Duplicate name check:** before saving, the trimmed name is compared case-insensitively against existing stories (excluding the story being edited, if any). On collision: toast "Name already in use", overlay stays open so the user can adjust.
+- On confirm: a new story is persisted (or the edited story is updated in place with new `updatedAt`), the editor clears, the archive updates and re-sorts, a "Saved" toast appears.
 
 ---
 
@@ -289,9 +294,10 @@ interface ColorBlock {
 interface SavedStory {
   id: StoryId;
   schemaVersion: 2;           // bump on breaking changes; see §6.6
-  name: string;               // user-entered, non-empty after trim
+  name: string;               // user-entered, non-empty after trim, unique (case-insensitive)
   colors: ColorBlock[];       // length 2..5, order-significant
-  createdAt: string;          // ISO 8601
+  createdAt: string;          // ISO 8601, set once at first save
+  updatedAt?: string;         // ISO 8601, set when an existing story is re-saved via long-press-edit
 }
 ```
 
@@ -332,8 +338,9 @@ When the naming overlay opens, the input is pre-filled with `Study №NNN` where
 
 - All saved stories are serialized to a JSON array and stored in `localStorage` under the key **`color-stories-v2`**.
 - Loaded on app mount via `src/lib/storage.ts`. **No component touches `localStorage` directly.**
-- Re-saved on every mutation to the saved-stories list.
+- Re-saved on every mutation to the saved-stories list (the first effect-write on mount is skipped since loading already gave us the persisted state).
 - If `localStorage` access throws (quota, disabled), surface a "Couldn't save" toast and continue in-memory; never crash.
+- **No artificial story cap.** The practical ceiling is the WebView's localStorage quota (~5–10 MB on Android), and each saved story serializes to a few hundred bytes of JSON, so the limit is several thousand stories before the quota matters. If a hard cap is wanted later, add it as a constant in `state/editor.ts` and gate at save-confirm.
 
 **Migration story:** the storage key is versioned. When the schema changes, bump to `color-stories-v3`, write a migration in `src/lib/storage.ts` that reads the old key, transforms, writes the new key, and deletes the old. Each `SavedStory` also carries `schemaVersion` for in-array migrations of mixed-vintage records.
 

@@ -7,6 +7,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import type { ColorBlock } from '../lib/types';
 import type { Mode } from '../state/editor';
 import { haptics } from '../lib/platform';
+import { blockLayoutFor } from '../lib/tile-layout';
 
 interface SwatchProps {
   block: ColorBlock;
@@ -19,64 +20,12 @@ interface SwatchProps {
   onTap: (id: string) => void;
 }
 
-interface Layout {
-  left: string;
-  width: string;
-  clipPath: string | undefined;
-  borderRadius: string;
-}
-
 const TAP_TOLERANCE = 6;
-const CORNER_RADIUS = 12;
 const BLOCK_SHADOW = 'drop-shadow(0 2px 6px hsl(0 0% 0% / 0.3))';
 const DND_TRANSITION = {
   duration: 350,
   easing: 'cubic-bezier(0.25, 1, 0.5, 1)',
 };
-
-function layoutFor(
-  index: number,
-  total: number,
-  startPct: number,
-  endPct: number,
-): Layout {
-  const isFirst = index === 0;
-  const isLast = index === total - 1;
-  const isSingle = total === 1;
-
-  if (isSingle) {
-    return {
-      left: '0',
-      width: '100%',
-      clipPath: undefined,
-      borderRadius: `${CORNER_RADIUS}px`,
-    };
-  }
-  if (isFirst) {
-    return {
-      left: '0',
-      width: `calc(${endPct}% + var(--seam-x) / 2)`,
-      clipPath:
-        'polygon(0 0, 100% 0, calc(100% - var(--seam-x)) 100%, 0 100%)',
-      borderRadius: `${CORNER_RADIUS}px 0 0 ${CORNER_RADIUS}px`,
-    };
-  }
-  if (isLast) {
-    return {
-      left: `calc(${startPct}% - var(--seam-x) / 2)`,
-      width: `calc(${100 - startPct}% + var(--seam-x) / 2)`,
-      clipPath: 'polygon(var(--seam-x) 0, 100% 0, 100% 100%, 0 100%)',
-      borderRadius: `0 ${CORNER_RADIUS}px ${CORNER_RADIUS}px 0`,
-    };
-  }
-  return {
-    left: `calc(${startPct}% - var(--seam-x) / 2)`,
-    width: `calc(${endPct - startPct}% + var(--seam-x))`,
-    clipPath:
-      'polygon(var(--seam-x) 0, 100% 0, calc(100% - var(--seam-x)) 100%, 0 100%)',
-    borderRadius: '0',
-  };
-}
 
 export function Swatch({
   block,
@@ -88,7 +37,7 @@ export function Swatch({
   isAnyDragging,
   onTap,
 }: SwatchProps) {
-  const layout = layoutFor(index, total, startPct, endPct);
+  const layout = blockLayoutFor(index, total, startPct, endPct);
   const isEdit = mode === 'edit';
 
   const {

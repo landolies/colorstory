@@ -7,7 +7,7 @@
 @tailwind utilities;
 
 :root {
-  --paper: 0 0% 47%;
+  --paper: 0 0% 71%;
   --paper-elevated: 0 0% 90%;
   --ink: 220 22% 13%;
   --rule: 0 0% 30%;
@@ -58,6 +58,7 @@ body {
     transparent 0
   );
   background-size: 16px 16px;
+  background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
 }

@@ -14,4 +14,5 @@ export interface SavedStory {
   name: string;
   colors: ColorBlock[];
   createdAt: string;
+  updatedAt?: string;
 }

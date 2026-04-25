@@ -13,6 +13,7 @@ export type EditorAction =
   | { type: 'removeBlock'; id: string }
   | { type: 'toggleWeight'; id: string }
   | { type: 'reorderBlocks'; ids: string[] }
+  | { type: 'loadBlocks'; blocks: ColorBlock[] }
   | { type: 'enterEdit' }
   | { type: 'exitEdit' }
   | { type: 'discardAll' };
@@ -83,6 +84,8 @@ export function editorReducer(
       if (hasAdjacentDuplicates(next)) return state;
       return { ...state, blocks: next };
     }
+    case 'loadBlocks':
+      return { mode: 'view', blocks: action.blocks };
     case 'enterEdit':
       if (state.blocks.length === 0) return state;
       return { ...state, mode: 'edit' };
