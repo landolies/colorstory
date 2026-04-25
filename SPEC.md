@@ -72,9 +72,18 @@ Exports (v0): `haptics.tap()`, `haptics.pulse()`, `clipboard.write(text)`. Picke
 Components must use these semantic tokens — no raw color literals (`#xxxxxx`, `rgb(...)`) anywhere in component code. The one exception is user-supplied swatch colors themselves, which are applied as inline styles.
 
 - `--ink` — deep foreground text
-- `--paper` — warm off-white background
-- `--paper-elevated` — slightly lifted surface (empty-state canvas, cards)
-- `--rule` — hairline borders and seams
+- `--paper` — neutral **18% grey** background (mid-grey reference; saturated colors read more vividly against it than against off-white)
+- `--paper-elevated` — bright near-white grey (~90% lightness) for the empty-state canvas and for the pill buttons. Distinct enough from `--paper` that the canvas visibly lifts off the background.
+- `--rule` — hairline borders and seams (darker than `--paper` for visibility)
+
+**Drop shadow.** The empty-state canvas carries a single `filter: drop-shadow(0 2px 6px hsl(0 0% 0% / 0.3))` on the elevated paper surface.
+
+In populated state, the shadow strategy depends on mode:
+
+- **View mode:** a single tile-wide drop-shadow on the **Tile container** (which has no background; its only painted output is the children's polygons). The shadow conforms to the combined silhouette of all blocks, which gives a clean outer-perimeter shadow with no shadow leakage at internal seams (where two colors touch).
+- **Edit mode:** the tile-wide shadow is dropped and **each Swatch's outer element carries its own shadow** instead. This way, when blocks piston (see §4.2), the per-block shadows move with them, reinforcing the sense of individual blocks lifting and shifting.
+
+This split exists because in view mode the tile reads as a single composed object, while in edit mode each block is its own movable thing.
 
 ### Typography
 
@@ -93,9 +102,9 @@ Background carries a faint dotted texture over the paper color. Faint, not loud.
 The active color story is a single horizontal tile occupying the upper portion of the viewport at near-full width.
 
 - **Aspect ratio: 3:2** (width:height), with `min-height: 180px` and `max-height: 60vh` as guardrails.
-- The four **outer corners** of the tile are **mitered at 45°** — cut, not rounded — for a crafted, badge-like feel.
+- The four **outer corners** of the tile are **rounded** with a 12px radius — a 90° chamfer, not a hard miter.
 - When multiple colors are present, the **seams between them are single straight diagonal lines** (no kinks, no chevrons). Think BMW M / Toyota TRD striped-logo aesthetic.
-- The first block's left edge and the last block's right edge remain flat against the tile's mitered outer shape.
+- The first block's left edge and the last block's right edge are vertical, terminating in the rounded outer corners (top-left/bottom-left for the first block; top-right/bottom-right for the last). Interior blocks have no rounded corners — they meet only internal seams.
 
 ### Seam geometry
 
@@ -103,7 +112,8 @@ The seam angle is **fixed** — it does **not** depend on block width. Specifica
 
 - Each seam advances horizontally by `0.25 × tile_height` from bottom to top (≈76° from horizontal, leaning right).
 - Blocks of different flex weights produce seams at different horizontal positions but with identical slope.
-- Implementation: single outer `clip-path` on the tile for the mitered shell; per-block `clip-path` polygons for the seams. **Do not** use rotated rectangles + `overflow: hidden` — it doesn't survive reorder cleanly.
+- **Each seam is centered on its share boundary:** the seam line crosses the share-boundary x at the tile's vertical midpoint. So a 75/25 split has the seam's TOP at `75% + seam_x/2` and BOTTOM at `75% − seam_x/2`. This way each block's average visible width matches its weight share, so the visual reading of the proportions matches the data.
+- Implementation: each block is rendered as a **two-element nest**. The outer element is absolutely positioned (left/width derived from the share boundary ± `seam_x/2`), has per-corner `border-radius` for whatever outer corners it owns (12px on the corners that face the tile's outer perimeter, 0 on internal seam-facing corners), `overflow: hidden` so the inner is clipped to the rounded shape, and carries the per-block `filter: drop-shadow(...)` plus the piston/drag transforms. The inner element fills the outer and applies the parallelogram `clip-path` for the seam. There is **no parent clip-path on the Tile**, and the Tile has **no background in populated state** — the per-block outer divs are the only painted surfaces. CSS clip-path cannot paint outside the element's bounding box, so a single flex container with negative-x clip points produced triangular gaps in earlier versions; the two-element nest is what avoids that without a parent clip-path swallowing the per-block shadows. **Do not** use rotated rectangles + `overflow: hidden` either — it doesn't survive reorder cleanly.
 
 ### Weighting
 
@@ -128,35 +138,52 @@ Only one affordance: a single **eye icon** in the top-right. Tapping it toggles 
 
 Occupies the upper portion of the viewport at the 3:2 aspect ratio defined in §3.
 
+The canvas itself contains **no overlay controls**. All interaction buttons live in the action row below the canvas (§4.3). The canvas is for color content; the row is for actions. This separation avoids overlay/× collisions and keeps the colored area clean.
+
 **Empty state**
 
 - The entire canvas is the entry point: a large `+` icon centered on an elevated paper surface.
-- Tapping it opens the Android color picker, and the chosen color becomes the first block (size: **major**).
-- A small floating **shuffle icon** in the lower-right is also active in the empty state — tapping it adds a random pleasant HSL color (see §6.2) as the first major block.
+- Tapping the canvas opens the Android color picker, and the chosen color becomes the first block (size: **major**).
+- The action row below the canvas shows only the **shuffle** button (single button, centered) — tapping it adds a random pleasant HSL color (see §6.2) as the first major block. Add / discard / save buttons are hidden until at least one color exists.
 
 **Populated state (view mode)**
 
-- Renders the mitered, slanted-seam tile described in §3.
-- A small floating **`+`** in the upper-right of the canvas adds another color (up to 5 total; defaults to **minor**).
-- A small floating **shuffle icon** in the lower-right adds a random pleasant HSL color.
+- Renders the slanted-seam tile described in §3.
+- See §4.3 for the four action buttons in the row below.
 - See §5 for the gesture model.
+
+**Picker confirm flow (post-v0).** The current native `<input type="color">` picker commits immediately on dismiss; there is no tentative state on the canvas. The custom picker planned for post-v0 will introduce a "tentative selection" — tapping a swatch in the picker grid highlights it with a red border, and a second tap on the same swatch confirms and closes the picker. Confirmation lives **inside the picker UI only**, never as an artifact on the canvas itself.
 
 **Populated state (edit mode)**
 
-- Tile wiggles (keyframes in `src/index.css`).
-- Each block shows two small overlay controls (color/contrast aware, see §6.3):
-  - A **size toggle** in one corner, switching the block between **major** and **minor**.
-  - A **×** in the opposite corner, removing the block. **Hidden when total count == 2** (cannot drop below the minimum from inside edit mode).
-- Drag any block horizontally to reorder.
-- The floating `+` slot in the upper-right becomes a **`✓`** — tap to exit edit mode.
-- The floating shuffle and the action row (§4.3) are **hidden** while in edit mode. To add a color or save, exit first.
+- Each Swatch **pistons** along the seam axis (keyframes `piston-a` / `piston-b` in `src/index.css`, applied via inline `style.animation` at `0.65s` period, amplitude `(±0.5px, ∓2px)`). Blocks alternate phase by **index parity** — even indices use `piston-a`, odd use `piston-b` — so adjacent blocks always move in opposite directions. The alternation is positional, not per-block-identity, so when blocks reorder the alternation persists across the new layout. The amplitude is small enough that the brief seam separation during peak displacement reads as motion rather than as a gap.
+- **Tap a block** (anywhere on its color area) to flip it between **major** and **minor**. Brief haptic.
+- **Swipe up or down on a block** (>80px vertical, with vertical motion at least 1.2× the horizontal motion) to **remove** it. Removal works regardless of block count; if the last block is swiped away, edit mode auto-exits to the empty state. The swipe uses the same drag mechanism as reorder — the difference is that the direction at end-of-drag determines intent. There is no `×` button in edit mode anymore (earlier versions used one in the top-right corner, then a top-zone tap, both of which conflicted with other gestures or were too small a target).
+- **Drag a block horizontally** (>6px, with horizontal dominance) to reorder. Reorder is rejected (block snaps back, "Same as adjacent" toast) if the new order would put two same-color blocks adjacent.
+- The action row collapses to a single centered **`✓`** button — tap to exit edit mode. To add a color, recolor, or save, exit first.
 
 ### 4.3 Action row
 
-Only renders when at least one color exists **and** the canvas is in view mode. Two icon-only, circular buttons, centered below the canvas:
+A single horizontal row of icon-only circular pill buttons, centered below the canvas. Renders in three configurations depending on app state:
 
+**Empty state (no colors yet):**
+
+- **shuffle** — adds a random pleasant color as the first major block.
+
+(Add, discard, and save are hidden — there's nothing to add to, discard, or save. Tap the canvas itself to pick the first color manually.)
+
+**View mode with 1+ colors:**
+
+Four buttons, left to right:
+
+- **`+`** — opens the system color picker; appends the chosen color as a minor block. Visually disabled (30% opacity, non-responsive) when at the 5-color cap.
+- **shuffle** — appends a random pleasant color as a minor block. Same disabled-at-cap treatment.
 - **`×`** — discards the current draft (no confirmation).
 - **`✓`** — opens the naming overlay. **Disabled unless there are 2+ colors.**
+
+**Edit mode:**
+
+A single centered **`✓`** button that exits to view mode. The four-button row is hidden in edit mode.
 
 ### 4.4 Archive
 
@@ -196,11 +223,27 @@ There is no double-tap in view mode. Single-tap fires immediately on pointer-up.
 
 | Gesture                          | Result                                                              |
 | -------------------------------- | ------------------------------------------------------------------- |
-| **Drag a block horizontally**    | Reorders blocks via `@dnd-kit/sortable`.                            |
-| **Tap a block's size toggle**    | Flips that block between **major** and **minor**. Brief haptic tap. |
-| **Tap a block's `×`**            | Removes that block (only shown when count > 2).                     |
-| **Tap a block's color area**     | Opens the system color picker for that block.                       |
-| **Tap the floating `✓`**         | Exits to view mode.                                                 |
+| **Drag a block horizontally**    | Reorders blocks via `@dnd-kit/sortable`. See "Drag mechanics" below.   |
+| **Swipe up or down on a block**  | Removes that block (>80px vertical with vertical-dominant direction). |
+| **Tap a block**                  | Flips that block between **major** and **minor**. Brief haptic tap.   |
+| **Tap the centered `✓` below the canvas** | Exits to view mode.                                          |
+
+The two modes are deliberately split by intent: **view = color, edit = structure**. Recoloring is a view-mode-only action; to recolor in edit mode, exit first.
+
+Block weight is strictly two-state (`major` / `minor`); tap is a pure toggle. Per-block weight transitions animate via `transition: left 0.22s, width 0.22s` on each Swatch, so resizing one block also smoothly slides the others (their visible % share depends on the sum of all weights).
+
+### Drag mechanics
+
+Reorder and swipe-remove share dnd-kit's **`DragOverlay`** flow to get an "icon-pickup" feel rather than an "in-place slide" feel. The flow:
+
+1. **Drag start.** The picked-up block goes to `opacity: 0` in the layout (still occupying its slot, so dnd-kit's geometry is correct, but invisible). A `DragPreview` is rendered via `DragOverlay` and follows the finger. The preview matches the original block's exact shape: same dimensions, same parallelogram clip-path (with first/last variants), same color, same per-corner border-radius. It carries a heavy `drop-shadow` and runs a 180ms `lift-in` keyframe animation that scales it from 1.0 to 1.05 on appearance — the visual cue that the block has been "plucked closer to the viewer." Because `DragOverlay` portals to `<body>`, the preview cannot inherit the tile's `--seam-x` CSS variable; the value is captured at drag start and applied as an inline style on the preview.
+2. **During drag.** Movement is **not** restricted to the horizontal axis — the preview follows the finger freely so vertical swipes are visible as the user makes them. dnd-kit's `horizontalListSortingStrategy` continues to shift surrounding blocks based on horizontal collision, so vertical movement does not reorder. **All piston animations are paused** while any drag is active (`isAnyDragging` prop) — otherwise the inline `style.transform` from the piston animation overrides the sort-shift `transform` and the surrounding blocks appear unresponsive.
+3. **Drop, two outcomes:**
+   - If `|delta.y| > 80px` AND `|delta.y| > |delta.x| × 1.2`, the gesture is interpreted as a **swipe-remove** — the active block is removed from the array, brief haptic fires, and the overlay disappears.
+   - Otherwise the gesture is a **reorder** — the `DragPreview` runs a brief 220ms drop animation to the dropped block's new layout position; then the overlay disappears and the original block re-appears at the new position with its `opacity` restored. There is no slide of the dropped block from its OLD layout slot to the new one — the original was invisible the whole time, so the user's eye never tracks an "old position" for it.
+4. **Cancel.** If `onDragCancel` fires (escape key, etc.), the overlay clears and the original block re-appears at its original slot.
+
+This matches the iOS / Android home-screen icon-rearrangement metaphor: pick up, hover to find the slot, drop into place — or flick away to discard.
 
 ### Long-press detection
 
@@ -210,6 +253,7 @@ Long-press lives on the **tile**, not on individual blocks — this avoids the p
 - Cancels if pointer moves more than **8px** in any direction (intent was scroll/drag, not press).
 - Cancels on `pointerup` before the timer fires (intent was tap).
 - Fires haptic pulse and transitions to edit mode at ~450ms.
+- **Suppresses the next swatch tap.** When long-press fires, the Tile sets a one-shot `suppressNextSwatchTap` flag. The pointerup that ends the long-press (whether it lands on a block as a "tap" or after a small movement) does **not** trigger weight-toggle or recolor on the pressed block. Without this, the same gesture that enters edit mode would also resize the block underneath. The flag is also cleared on any subsequent pointerup so it never persists past one cycle (covers the case where long-press is followed immediately by a drag).
 
 ### dnd-kit sensor configuration
 
@@ -277,9 +321,11 @@ When the naming overlay opens, the input is pre-filled with `Study №NNN` where
 
 - **Minimum colors to save:** 2
 - **Maximum colors per story:** 5
+- **Minimum colors to save:** 2 (the `✓` save button is disabled below this; removal in edit mode is **not** gated by minimum — you can remove all the way to 0, which auto-exits edit mode and shows the empty state)
 - **First color added:** defaults to **major**
 - **Subsequent colors added:** default to **minor**
-- Attempting to add a 6th color shows a toast "Max 5" and is a no-op.
+- Attempting to add a 6th color shows a toast "Max 5" and is a no-op. The `+` and shuffle buttons in the action row are also visually disabled (30% opacity, non-responsive) while at the cap so the limit is obvious before the user taps.
+- **No two adjacent blocks may share the same hex.** Enforced on add (vs. last block's hex), recolor (vs. previous and next neighbor's hex), and reorder (vs. computed neighbors in the new order). Rejected operations are no-ops with a "Same as adjacent" toast. The picker input's `value` is set to a fresh random hex before each open, so any pick (including `#000000`) registers as a `change` event — without this, picking a color identical to the input's current value silently fails (which is why an earlier version refused to add black).
 - The color input element is treated as a black box: Android fires `change` on dismiss with the picked hex. We do not handle the `input` event (which behaves inconsistently in WebViews).
 
 ### 6.6 Persistence
@@ -396,7 +442,7 @@ Flows that must stay green:
 1. Empty → tap canvas `+` → picker opens → first major block renders.
 2. Add 2nd color → ✓ enabled → name → save → archive shows new tile.
 3. Long-press tile → wiggle starts → drag a block → order changes → tap ✓ → wiggle stops.
-4. Long-press tile → tap a block's size toggle → flex ratio updates.
+4. Long-press tile → tap a block → its weight flips (visible width changes); other blocks slide smoothly to share the new total.
 5. Long-press tile → tap `×` on a block → block removed; `×` disappears when count drops to 2.
 6. Try to add 6th color → "Max 5" toast; no block added.
 7. Tap an archive tile → clipboard contains the expected `, `-joined hex string.
@@ -407,7 +453,8 @@ Gesture-collision regression suite (one test each):
 
 - A scroll attempt that starts on the tile does not enter edit mode (pointer moves > 8px before the long-press timer).
 - A drag attempt that starts on a block in view mode does nothing (drag is wired only in edit mode).
-- A tap on a block's size toggle in edit mode does not initiate a drag.
+- A long-press that enters edit mode does **not** also fire weight-toggle or recolor on the pressed block (suppression flag).
+- A tap on a block's `×` in edit mode does not initiate a drag and does not also toggle the block's weight (`stopPropagation` + the tap-vs-drag detector both apply).
 
 ### 10.4 APK smoke (manual, pre-release)
 

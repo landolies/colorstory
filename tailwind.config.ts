@@ -15,6 +15,10 @@ export default {
         serif: ['"Fraunces Variable"', 'Georgia', 'serif'],
         mono: ['"JetBrains Mono Variable"', 'Menlo', 'monospace'],
       },
+      animation: {
+        'wiggle-a': 'wiggle-a 0.18s ease-in-out infinite',
+        'wiggle-b': 'wiggle-b 0.18s ease-in-out infinite',
+      },
     },
   },
   plugins: [],
