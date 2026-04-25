@@ -107,6 +107,17 @@ This repo has a single authoritative reference: **`SPEC.md`**. When asking Claud
 
 Run through the acceptance checklist in `SPEC.md` §11. It's short and it catches the things that regress most often: gesture collisions, layout shift on details toggle, raw color literals, and components importing `@capacitor/*` directly instead of going through `src/lib/platform.ts`.
 
+### Resuming work after a pause
+
+Conversational context with Claude Code is ephemeral; durable context lives in four files. When picking the project back up, ask Claude Code to read these in order — that's enough to fully orient without recapping anything from a previous session:
+
+1. **`SPEC.md`** — the behavior contract. Source of truth for what the app does.
+2. **`TODO.md`** — deferred work that doesn't fit in the spec (open questions, known issues, things waiting on a trigger condition).
+3. **`.claude/lessons.md`** — project-specific learnings. Past mistakes worth not repeating.
+4. **`git log --oneline -10`** — what shipped recently.
+
+A reasonable resume one-liner: *"Resuming work on Color Story. Read SPEC.md, TODO.md, .claude/lessons.md, and `git log --oneline -10`, then summarize where we are and what's next."*
+
 ---
 
 ## Design principles (short form)
